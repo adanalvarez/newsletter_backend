@@ -23,7 +23,7 @@ resource "aws_dynamodb_table" "newsletter" {
     enabled = true
   }
 
-  server_side_encryption {
-    enabled = true
-  }
+  # No server_side_encryption block: the table is still encrypted at rest, with DynamoDB's own (AWS-owned) key.
+  # Asking for the AWS-managed KMS key (aws/dynamodb) failed on the first apply because that key didn't exist
+  # in the account yet, and it adds KMS calls and cost for no real gain here.
 }
