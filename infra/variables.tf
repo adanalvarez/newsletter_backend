@@ -91,3 +91,15 @@ variable "log_retention_days" {
   type        = number
   default     = 90
 }
+
+variable "site_bucket" {
+  description = "The site's S3 bucket. The feedback function reads newsletter/polls.json (the open questions) from it."
+  type        = string
+  default     = "adanalvarez"
+}
+
+variable "comment_retention_days" {
+  description = "How long anonymous comments left with an answer are kept."
+  type        = number
+  default     = 365
+}

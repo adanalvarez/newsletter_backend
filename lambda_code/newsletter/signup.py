@@ -8,26 +8,16 @@ Every answer is a redirect back to adan.cloud, the same whether the address is n
 subscribed, and it takes about the same time. So the form can't be used to find out who reads the newsletter.
 """
 
-import base64
 import logging
 import random
 import secrets
 import time
-from urllib.parse import parse_qs
 
-from . import config
+from . import config, web
 from .clock import day, iso
 from .errors import Rejected
-from .validation import (
-    canonical,
-    clean_role,
-    clean_source,
-    email_ref,
-    normalize_email,
-    secret_matches,
-    token_hash,
-    valid_token,
-)
+from .validation import canonical, clean_role, clean_source, email_ref, normalize_email, token_hash, valid_token
+from .web import redirect, text
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -36,7 +26,6 @@ CHECK_INBOX = "/newsletter/check-your-inbox"
 CONFIRMED = "/newsletter/confirmed"
 EXPIRED = "/newsletter/link-expired"
 CONFIRM_PAGE = "/newsletter/confirm"
-MAX_BODY = 4096
 # The log line the daily-ceiling alarm watches for (infra/alarms.tf).
 CEILING_MARKER = "DAILY_CEILING_REACHED"
 
@@ -70,40 +59,23 @@ def lambda_handler(event, context):
 
 def handle(event, deps):
     settings = deps.settings
-    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
-
-    # Only requests that went through Cloudflare (its rate limits) and the site's CloudFront are answered.
-    if not secret_matches(headers.get("x-origin-verify"), settings.origin_secrets):
-        return text(403, "Forbidden")
-    if settings.edge_secrets and not secret_matches(headers.get("x-edge-verify"), settings.edge_secrets):
+    if web.refused(event, settings):
         return text(403, "Forbidden")
 
-    method = event.get("requestContext", {}).get("http", {}).get("method", "")
+    method = web.method(event)
     path = event.get("rawPath", "")
-
-    # Forms on other sites can't post here for their visitors (which would spread abuse across many IPs).
-    if method == "POST" and not same_site(headers, settings.site_url):
-        return text(403, "Forbidden")
-
     if path == "/api/subscribe" and method == "POST":
         started = deps.clock()
         try:
-            return subscribe(form(event), deps)
+            return subscribe(web.form(event), deps)
         finally:
             pad(started, deps)
     if path == "/api/confirm" and method == "POST":
-        return confirm(form(event), deps)
+        return confirm(web.form(event), deps)
     if path == "/api/confirm" and method == "GET":
         token = (event.get("queryStringParameters") or {}).get("t", "")
         return redirect(settings, CONFIRM_PAGE + (f"#t={token}" if valid_token(token) else ""))
     return text(404, "Not found")
-
-
-def same_site(headers, site_url):
-    origin = headers.get("origin")
-    if origin:
-        return origin == site_url
-    return headers.get("sec-fetch-site") == "same-origin"
 
 
 def pad(started, deps):
@@ -207,30 +179,3 @@ def consent_version(posted, settings, ref):
 
 def current_consent(settings):
     return settings.consent_versions[0] if settings.consent_versions else ""
-
-
-def form(event):
-    body = event.get("body") or ""
-    if event.get("isBase64Encoded"):
-        try:
-            body = base64.b64decode(body).decode("utf-8", errors="replace")
-        except ValueError:
-            return {}
-    if len(body) > MAX_BODY:
-        return {}
-    try:
-        return {key: values[0] for key, values in parse_qs(body, max_num_fields=20).items()}
-    except ValueError:
-        return {}
-
-
-def redirect(settings, path):
-    return {"statusCode": 303, "headers": {"Location": settings.site_url + path, "Cache-Control": "no-store"}}
-
-
-def text(status, message):
-    return {
-        "statusCode": status,
-        "headers": {"Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store"},
-        "body": message,
-    }

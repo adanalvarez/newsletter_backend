@@ -52,6 +52,9 @@ SES (bounces, complaints, unsubscribes) ──► EventBridge ──► ses-even
 | `COUNTER#<date>` | confirmation emails sent that day |
 | `EDITION#<slug>` | an edition's numbers: sent, delivered, bounced, complained, unsubscribed (counts only) |
 | `SENT#<slug>#<reader>` | who an edition went to, so a re-run never sends twice (expires after 180 days) |
+| `POLL#<slug>#<question>` | anonymous answer counts (`a0`, `a1`, … and `total`) |
+| `VOTER#<slug>#<question>#<code>` | a daily one-way code that stops repeat votes (deleted within 26 hours) |
+| `COMMENT#<slug>#<question>#<time>#<random>` | an optional anonymous comment and its answer (deleted after a year) |
 
 Writes that depend on the current state are conditional. Two requests at once can't both send an email, confirm twice, or overwrite a confirmed subscriber.
 
@@ -148,6 +151,48 @@ To see whether people read an edition, look at:
 - **LinkedIn's numbers** for the LinkedIn edition.
 
 **Before production access,** SES only delivers to verified addresses. `test` to `adan@adan.cloud` works as soon as adan.cloud is verified.
+
+## Polls and "Was this edition useful?"
+
+Readers can answer a poll in an edition and say whether each edition was useful, **anonymously**.
+
+**Writing a poll** (in the edition's Markdown, site repo):
+````
+```poll alert-speed
+How long until a human sees your first alert?
+- Under 5 minutes
+- 5 to 60 minutes
+- More than an hour
+```
+````
+
+**Where it shows up:**
+- **On the site:** a form.
+- **In the email:** a card of answer buttons.
+- **In the feed:** a link to answer on the site.
+- **Every edition** also ends with "Was this edition useful?" (Yes / Somewhat / No).
+
+**How an answer travels:**
+1. An email button opens `adan.cloud/newsletter/vote#e=<edition>&q=<question>&a=<answer>`. Everything after `#` stays in the browser.
+2. The page shows the question with that answer selected, and an optional comment box.
+3. The reader sends it: a POST to `/api/vote`, which runs on the **feedback** function.
+4. Email link scanners open links but don't press buttons, so they can't vote.
+
+**Why it's anonymous:**
+- No reader ID in any link.
+- No email.
+- The IP address is never stored. Repeat votes are stopped with a one-way code made from the IP address, the question and the day, using a secret key. The code changes daily and is deleted within 26 hours.
+
+**Why it's safe:**
+- **Origin checks:** the same edge and origin secrets and same-site check as sign-up.
+- **Only real questions count:** answers are checked against `newsletter/polls.json`, which the site builds from published editions and the function reads from the site's S3 bucket.
+- **Comments** are capped at 1,000 characters. Control and direction-override characters are stripped when they come in, and again when `stats` prints them.
+- **Its own minimal role:** the function can only write `POLL#`, `VOTER#` and `COMMENT#` items (an IAM `dynamodb:LeadingKeys` condition), and read that one S3 object. No SES, and no subscribers.
+- **Caveat:** the daily code relies on Cloudflare's `CF-Connecting-IP`, which can be trusted only because the edge secret proves the request came through Cloudflare. Keep `require_edge_secret` on.
+
+**Results:** `.venv/bin/python tools/cli.py stats <slug>` shows the counts and percentages for each question, plus the comments.
+
+**Switching it on:** after `terraform apply` creates the feedback function, set `feedbackEndpoint: '/api/vote'` in the site's `src/data/newsletter.js`. Until then, polls show on the site as a plain list and the "useful" question is hidden. The `/api/*` CloudFront behavior already covers `/api/vote`.
 
 ## Running it
 

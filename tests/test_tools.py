@@ -85,27 +85,79 @@ class RenderTest(unittest.TestCase):
     def test_html_has_inline_styles_and_the_unsubscribe_placeholder(self):
         page = render.to_html(edition())
         self.assertIn("{{amazonSESUnsubscribeUrl}}", page)
-        self.assertIn('<p style="margin:0 0 16px;">The story', page)
-        self.assertIn('<h2 style="', page)
-        self.assertRegex(page, r'<img style="[^"]+" width="536" alt="The clock" src="https://adan.cloud/newsletter/sixty-seconds/clock.png"')
+        self.assertIn('<p style="margin:0 0 18px;">The story', page)
+        self.assertIn('<h1 class="nl-title"', page)
+        self.assertRegex(page, r'<img style="[^"]+" width="592" alt="The clock" src="https://adan.cloud/newsletter/sixty-seconds/clock.png"')
         self.assertIn('<a style="color:#0b6a87;text-decoration:underline;" href="https://example.com">a link</a>', page)
-        self.assertIn("Edition 3", page)
+        self.assertIn("Edition 3 &middot; Nov 15, 2026 &middot; 1 min read", page)
+
+    def test_decide_and_build_sections_become_callouts(self):
+        page = render.to_html(edition())
+        self.assertIn('class="nl-callout"', page)
+        self.assertRegex(page, r'(?s)class="nl-callout".*?>If you decide</div>\s*<p[^>]*>Ask your team one question.</p>')
+        self.assertNotIn(">If you decide</h2>", page)
+
+    def test_dark_mode_and_accessibility(self):
+        page = render.to_html(edition())
+        self.assertIn("prefers-color-scheme: dark", page)
+        self.assertIn('role="article"', page)
+        self.assertIn('<html lang="en">', page)
 
     def test_no_tracking(self):
         page = render.to_html(edition())
         images = [chunk.split('"')[0] for chunk in page.split('src="')[1:]]
-        self.assertEqual(images, ["https://adan.cloud/newsletter/sixty-seconds/clock.png"])
+        self.assertEqual(images, [render.LOGO, "https://adan.cloud/newsletter/sixty-seconds/clock.png"])
+
+    def test_stays_under_gmails_clipping_size(self):
+        self.assertLess(len(render.to_html(edition()).encode()), render.GMAIL_CLIP_BYTES)
 
     def test_title_and_description_are_escaped(self):
         e = edition()
         e.title = "<script>x</script>"
         self.assertNotIn("<script>", render.to_html(e))
 
+    def test_reading_time_and_date(self):
+        self.assertEqual(render.reading_minutes("word " * 460), 2)
+        self.assertEqual(render.reading_minutes(""), 1)
+        self.assertEqual(render.display_date("2026-11-05"), "Nov 5, 2026")
+
+    def test_polls_become_anonymous_answer_links(self):
+        e = edition()
+        e.body += "\n\n```poll alert-speed\nHow long until a human sees your first alert?\n- Under 5 minutes\n- More than an hour\n```\n\nAfter the poll."
+        page = render.to_html(e)
+        self.assertIn("How long until a human sees your first alert?", page)
+        self.assertIn('href="https://adan.cloud/newsletter/vote#e=sixty-seconds&amp;q=alert-speed&amp;a=1"', page)
+        self.assertNotIn("NLPOLL", page)
+        self.assertNotIn("```", page)
+        self.assertIn("After the poll.", page)
+        text = render.to_text(e)
+        self.assertIn("POLL: How long until a human sees your first alert?", text)
+        self.assertIn("  - More than an hour: https://adan.cloud/newsletter/vote#e=sixty-seconds&q=alert-speed&a=1", text)
+
+    def test_every_edition_asks_if_it_was_useful(self):
+        page = render.to_html(edition())
+        self.assertIn("Was this edition useful?", page)
+        for i in range(3):
+            self.assertIn(f"#e=sixty-seconds&amp;q=useful&amp;a={i}", page)
+        self.assertIn("Was this edition useful? Yes: https://adan.cloud/newsletter/vote#e=sixty-seconds&q=useful&a=0", render.to_text(edition()))
+
+    def test_links_carry_no_reader_identity(self):
+        page = render.to_html(edition())
+        for href in [chunk.split('"')[0] for chunk in page.split('href="')[1:]]:
+            self.assertNotRegex(href, r"[?&](email|uid|reader|r|id)=", href)
+
+    def test_a_malformed_poll_is_an_error_not_a_broken_email(self):
+        e = edition()
+        e.body += "\n\n```poll broken\nOnly a question\n```"
+        with self.assertRaises(ValueError):
+            render.to_html(e)
+
     def test_text_version(self):
         text = render.to_text(edition())
         self.assertIn("a link (https://example.com)", text)
         self.assertIn("[Chart: The clock]", text)
         self.assertIn("Unsubscribe: {{amazonSESUnsubscribeUrl}}", text)
+        self.assertIn("Reply to this email", text)
         self.assertNotIn("**", text)
 
 

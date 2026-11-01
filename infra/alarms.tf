@@ -42,6 +42,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   for_each = {
     signup     = aws_lambda_function.signup.function_name
     ses-events = aws_lambda_function.ses_events.function_name
+    feedback   = aws_lambda_function.feedback.function_name
   }
 
   alarm_name          = "${var.project}-${each.key}-errors"

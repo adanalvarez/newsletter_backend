@@ -23,6 +23,7 @@ SETTINGS = Settings(
     consent_versions=["2026-11-01", "2026-06-01"],
     roles=["Detection engineering", "Other"],
     daily_limit=2,
+    vote_key="v0te",
 )
 
 
@@ -35,6 +36,9 @@ class FakeStore:
         self.counters = {}
         self.statuses = []
         self.editions = {}
+        self.voters = set()
+        self.polls = {}
+        self.comments = []
 
     def get_subscriber(self, key):
         return self.subscribers.get(key)
@@ -84,6 +88,18 @@ class FakeStore:
     def count_edition(self, edition, field, amount=1):
         numbers = self.editions.setdefault(edition, {})
         numbers[field] = numbers.get(field, 0) + amount
+
+    def record_vote(self, edition, question, answer, voter, now):
+        key = (edition, question, voter)
+        if key in self.voters:
+            return False
+        self.voters.add(key)
+        counts = self.polls.setdefault((edition, question), {})
+        counts[answer] = counts.get(answer, 0) + 1
+        return True
+
+    def add_comment(self, edition, question, answer, comment, now):
+        self.comments.append((edition, question, answer, comment))
 
     def count_confirmation(self, day, limit, now):
         if self.counters.get(day, 0) >= limit:

@@ -9,6 +9,11 @@ LOCAL_RE = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=
 DOMAIN_RE = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}")
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{30,100}")
 SOURCE_RE = re.compile(r"/[A-Za-z0-9/_-]{0,99}")
+ID_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+# Control characters (they could rewrite a terminal when comments are printed) and bidirectional overrides
+# (they can make text display differently from what it is).
+UNSAFE_TEXT_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+MAX_COMMENT = 1000
 GMAIL_DOMAINS = ("gmail.com", "googlemail.com")
 
 
@@ -30,6 +35,14 @@ def canonical(email):
     if domain in GMAIL_DOMAINS:
         local, domain = local.replace(".", "") or local, "gmail.com"
     return f"{local}@{domain}"
+
+
+def valid_id(value, max_length=60):
+    return bool(value and len(value) <= max_length and ID_RE.fullmatch(value))
+
+
+def clean_comment(value):
+    return UNSAFE_TEXT_RE.sub("", value or "").strip()[:MAX_COMMENT]
 
 
 def clean_role(value, allowed):

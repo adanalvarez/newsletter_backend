@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import edition as editions  # noqa: E402
 import render  # noqa: E402
-from newsletter.validation import canonical  # noqa: E402
+from newsletter.validation import canonical, clean_comment  # noqa: E402
 
 REGION = os.environ.get("AWS_REGION", "eu-west-1")
 TABLE = os.environ.get("NEWSLETTER_TABLE", "newsletter")
@@ -71,6 +71,9 @@ def preview(args):
     page.write_text(render.to_html(edition, postal=POSTAL, unsubscribe=render.PREVIEW_UNSUBSCRIBE), encoding="utf-8")
     (out / f"{edition.slug}.txt").write_text(render.to_text(edition, postal=POSTAL, unsubscribe=render.PREVIEW_UNSUBSCRIBE), encoding="utf-8")
     print(f"Subject: {edition.subject}\nPreview: {page}\nText:    {page.with_suffix('.txt')}")
+    size = len(page.read_bytes())
+    if size > render.GMAIL_CLIP_BYTES * 0.9:
+        print(f"Warning: the email is {size // 1000} KB. Gmail cuts emails off at about 102 KB; shorten it or split it.")
     if not args.no_open:
         webbrowser.open(page.as_uri())
 
@@ -180,6 +183,7 @@ def stats(args):
             print(f"  {field:<13}{value:>6}{share}")
         print("  Opens and clicks aren't tracked (no tracking pixels). Look at replies, and at visits to the")
         print("  edition's page in CloudFront's \"Popular objects\" report.")
+        answers(table, args.slug)
         return
 
     statuses, roles, sources = Counter(), Counter(), Counter()
@@ -197,6 +201,45 @@ def stats(args):
     print("Subscribers by status:", dict(statuses))
     print("Confirmed, by role:   ", dict(roles.most_common()))
     print("Confirmed, by page:   ", dict(sources.most_common()))
+
+
+def scan_prefix(table, prefix):
+    items, request = [], {"FilterExpression": "begins_with(pk, :p)", "ExpressionAttributeValues": {":p": prefix}}
+    while True:
+        page = table.scan(**request)
+        items += page["Items"]
+        if "LastEvaluatedKey" not in page:
+            return items
+        request["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+
+
+def answers(table, slug):
+    """Poll results, the "useful" score and anonymous comments for one edition."""
+    try:
+        questions = editions.fetch_polls().get("editions", {}).get(slug, {}).get("polls", {})
+    except Exception:
+        questions = {}  # labels are a nicety; counts still print
+    questions = {"useful": {"question": render.USEFUL_QUESTION, "options": render.USEFUL_OPTIONS}, **questions}
+    for item in sorted(scan_prefix(table, f"POLL#{slug}#"), key=lambda i: i["pk"]):
+        question_id = item["pk"].split("#", 2)[2]
+        question = questions.get(question_id, {"question": question_id, "options": []})
+        total = int(item.get("total", 0))
+        print(f"\n  {question['question']}  ({total} answers)")
+        for i in range(10):
+            if f"a{i}" in item or i < len(question["options"]):
+                count = int(item.get(f"a{i}", 0))
+                label = question["options"][i] if i < len(question["options"]) else f"answer {i}"
+                print(f"    {label:<36}{count:>5}  {count / total:.0%}" if total else f"    {label:<36}{count:>5}")
+    comments = sorted(scan_prefix(table, f"COMMENT#{slug}#"), key=lambda i: i["pk"])
+    if comments:
+        print("\n  Comments (anonymous):")
+        for item in comments:
+            question_id = item["pk"].split("#")[2]
+            options = questions.get(question_id, {}).get("options", [])
+            answer = int(item.get("answer", 0))
+            label = options[answer] if answer < len(options) else f"answer {answer}"
+            # Cleaned again on the way out: a comment can't send escape codes to your terminal.
+            print(f"    [{question_id}: {label}] {clean_comment(item.get('comment', ''))}")
 
 
 def main():

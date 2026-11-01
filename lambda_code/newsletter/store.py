@@ -10,6 +10,8 @@ Writes that depend on the current state are conditional, so two requests at once
 confirm twice, or overwrite a confirmed subscriber.
 """
 
+import secrets
+
 from botocore.exceptions import ClientError
 
 from .clock import iso
@@ -137,6 +139,36 @@ class Store:
             UpdateExpression="ADD #f :n",
             ExpressionAttributeNames={"#f": field},
             ExpressionAttributeValues={":n": amount},
+        )
+
+    def record_vote(self, edition, question, answer, voter, now):
+        """Counts an anonymous answer, once per reader per question per day. Returns False for a repeat."""
+        try:
+            self.table.put_item(
+                Item={"pk": f"VOTER#{edition}#{question}#{voter}", "expires_at": now + 26 * 3600},
+                ConditionExpression="attribute_not_exists(pk)",
+            )
+        except ClientError as error:
+            if _conditional_failed(error):
+                return False
+            raise
+        self.table.update_item(
+            Key={"pk": f"POLL#{edition}#{question}"},
+            UpdateExpression="ADD #a :one, #t :one",
+            ExpressionAttributeNames={"#a": f"a{answer}", "#t": "total"},
+            ExpressionAttributeValues={":one": 1},
+        )
+        return True
+
+    def add_comment(self, edition, question, answer, comment, now):
+        self.table.put_item(
+            Item={
+                "pk": f"COMMENT#{edition}#{question}#{iso(now)}#{secrets.token_hex(4)}",
+                "answer": answer,
+                "comment": comment,
+                "at": iso(now),
+                "expires_at": now + self.settings.comment_retention_days * DAY,
+            }
         )
 
     def count_confirmation(self, day, limit, now):

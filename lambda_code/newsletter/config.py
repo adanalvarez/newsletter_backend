@@ -33,6 +33,12 @@ class Settings:
     unconfirmed_retention_days: int = 30
     # Every sign-up answer takes about this long, so response times don't show who's already subscribed.
     min_response_ms: int = 700
+    # Polls and "was this useful?": the key for the daily, one-way voter code that stops repeat votes, where
+    # the site publishes the list of open questions, and how long anonymous comments are kept.
+    vote_key: str = ""
+    polls_bucket: str = ""
+    polls_key: str = "newsletter/polls.json"
+    comment_retention_days: int = 365
 
 
 def _list(value):
@@ -60,4 +66,8 @@ def load():
         retention_days=int(env.get("RETENTION_DAYS", "1095")),
         unconfirmed_retention_days=int(env.get("UNCONFIRMED_RETENTION_DAYS", "30")),
         min_response_ms=int(env.get("MIN_RESPONSE_MS", "700")),
+        vote_key=env.get("VOTE_KEY", ""),
+        polls_bucket=env.get("POLLS_BUCKET", ""),
+        polls_key=env.get("POLLS_KEY", "newsletter/polls.json"),
+        comment_retention_days=int(env.get("COMMENT_RETENTION_DAYS", "365")),
     )

@@ -83,3 +83,10 @@ def fetch(slug, site=SITE):
     request = urllib.request.Request(f"{site}/newsletter/{slug}.md", headers={"User-Agent": "newsletter-send-tool"})
     with urllib.request.urlopen(request, timeout=15) as response:
         return parse(response.read().decode("utf-8"), slug, site)
+
+
+def fetch_polls(site=SITE):
+    """The open questions, as the site publishes them (for labels in `stats`)."""
+    request = urllib.request.Request(f"{site}/newsletter/polls.json", headers={"User-Agent": "newsletter-send-tool"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return json.loads(response.read().decode("utf-8"))
