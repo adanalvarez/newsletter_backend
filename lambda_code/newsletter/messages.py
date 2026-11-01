@@ -13,6 +13,7 @@ UNSUBSCRIBE = "{{amazonSESUnsubscribeUrl}}"
 # The welcome is tagged like an edition, so its numbers show with `tools/cli.py stats welcome`.
 WELCOME_TAG = "welcome"
 LOGO = "https://adan.cloud/apple-touch-icon.png"
+LINKEDIN = "https://www.linkedin.com/in/adanalvarezvilchez/"
 TEXT, MUTED, LINK, LINE = "#023047", "#3d5566", "#0b6a87", "#d6e6ef"
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
 
@@ -21,7 +22,7 @@ FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-
 SUBJECT = "Confirm your subscription to No Hype, No Fear"
 
 CONFIRM_TEXT = [
-    "Someone, hopefully you, asked to get No Hype, No Fear: my monthly newsletter on how AI is changing security.",
+    "Someone, hopefully you, asked to get No Hype, No Fear: my newsletter on how AI is changing security, about once a month.",
 ]
 CONFIRM_AFTER = "If it wasn't you, ignore this email. You won't hear from me again."
 
@@ -30,26 +31,33 @@ CONFIRM_AFTER = "If it wasn't you, ignore this email. You won't hear from me aga
 # readers will remember who he is.
 
 WELCOME_SUBJECT = "Welcome to No Hype, No Fear"
-WELCOME_PREHEADER = "Thanks for subscribing. Who I am, and what to expect."
+WELCOME_PREHEADER = "Who I am, what to expect, and one question for you."
 WELCOME = [
     # Hook
-    "Thanks a lot for subscribing to No Hype, No Fear. In a time when information is so abundant, it's an honour to have you join.",
+    "Thanks a lot for subscribing. In a time when information is abundant, it's an honor to have you here.",
     # Name, Same, Fame
-    "I'm Adan Álvarez, a security architect and researcher based in Barcelona. In 15 years I've sat in almost every seat: "
-    "I kept Linux and VoIP servers alive, spent years as a pentester breaking into systems for a living, and was the first "
-    "full-time security engineer at a digital mental health company.",
+    "I'm Adan Álvarez, a hands-on security architect and researcher. I've worked in different areas of security "
+    "and specialized in AWS. My research has been featured in newsletters like tl;dr sec, CloudSecList and "
+    "Detection Engineering Weekly.",
     # Pain
-    "We're facing difficult times in cybersecurity. Companies are figuring out how to add AI to their security stack. "
-    "At the same time, AI is being added to different parts of the business, and all of it needs to be secure. "
-    "And attackers are using more and more AI in their attacks.",
-    # Aim
-    "What you can expect is a monthly article where I share what I've learnt, from my own experience and from other "
-    "experts and data, to help solve these problems.",
-    # Game
-    "My bigger goal: help security keep up with AI, and with the attackers who use it. No hype, no fear.",
+    "Like many, I'm working on implementing AI in security. I'm helping different companies and teams use it "
+    "securely. And at the same time, I'm fighting attackers who already use it.",
+    # Aim, Game
+    "My current aim is to help companies get AI-ready. My biggest goal is to help them build trust and reduce risk, "
+    "so they can scale securely.",
+    # What arrives
+    "This newsletter is one of the ways I believe I can help. About once a month, I share what I learn, what I test and "
+    "the data that backs it. I try to avoid the hype, but also the fear.",
 ]
-WELCOME_ASK = "One favour: reply to this email and tell me the one question about AI and security you'd most like answered. I read every reply."
-WELCOME_LINK = ("Until the next edition, my research is at", "/writing")
+# One easy question: replies also teach Gmail and Outlook that the newsletter is wanted.
+WELCOME_ASK = (
+    "One thing I love is learning what others are doing in security. What are you doing with AI right now, or what "
+    "would you like me to test next? Reply to this email or send me a DM on LinkedIn. One line is enough, and I read "
+    "every reply."
+)
+# The first email from a new sender often lands in Promotions.
+WELCOME_PS = "P.S. If this landed in Promotions or spam, please move it to your inbox so the next edition reaches you."
+WELCOME_LINK = ("Until the next edition, you can find my research at", "/writing")
 
 # ---- the layout ----
 
@@ -153,9 +161,11 @@ def welcome(site_url, unsubscribe=UNSUBSCRIBE):
         [
             _p("Hi,"),
             *(_p(text) for text in WELCOME),
-            f'<p class="nl-strong" style="margin:0 0 18px;font-weight:700;">{escape(WELCOME_ASK)}</p>',
+            # "LinkedIn" in the ask links to the profile.
+            _p(WELCOME_ASK).replace("LinkedIn", _link(LINKEDIN, "LinkedIn"), 1),
             f'<p style="margin:0 0 18px;">{escape(lead)} {_link(research, research.split("//")[-1])}.</p>',
             _p("Adan", "margin:0 0 18px;"),
+            _p(WELCOME_PS, f"margin:0 0 18px;color:{MUTED};"),
         ]
     )
     footer = "\n".join(
@@ -168,9 +178,10 @@ def welcome(site_url, unsubscribe=UNSUBSCRIBE):
         [
             "Hi,",
             *WELCOME,
-            WELCOME_ASK,
+            WELCOME_ASK.replace("LinkedIn", f"LinkedIn ({LINKEDIN})", 1),
             f"{lead} {research}",
             "Adan",
+            WELCOME_PS,
             f"--\nYou're getting this because you subscribed to {NEWSLETTER} at adan.cloud.\n"
             f"Unsubscribe: {unsubscribe}\nPrivacy: {site_url}/privacy\nAdan Álvarez · {POSTAL}",
         ]
