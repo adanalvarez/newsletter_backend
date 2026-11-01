@@ -57,6 +57,7 @@ resource "aws_lambda_function" "signup" {
   environment {
     variables = merge(local.common_environment, {
       CONFIRMATION_CONFIGURATION_SET = aws_sesv2_configuration_set.sets["confirmations"].configuration_set_name
+      CONFIGURATION_SET              = aws_sesv2_configuration_set.sets["editions"].configuration_set_name
       FROM_ADDRESS                   = var.from_address
       REPLY_TO                       = var.reply_to
       ORIGIN_SECRETS                 = join(",", concat([random_password.origin_secret.result], var.previous_origin_secrets))
@@ -98,13 +99,16 @@ resource "aws_iam_role_policy" "signup" {
         Resource = aws_dynamodb_table.newsletter.arn
       },
       {
-        # Confirmation emails only: from the newsletter's own address, through the confirmations
-        # configuration set. Even with this role's credentials, nobody can send as another @domain address.
+        # Confirmation and welcome emails only: from the newsletter's own address, through the two
+        # configuration sets (the welcome uses the contact list for its unsubscribe link). Even with this
+        # role's credentials, nobody can send as another @domain address.
         Effect = "Allow"
         Action = ["ses:SendEmail"]
         Resource = [
           aws_sesv2_email_identity.domain.arn,
           aws_sesv2_configuration_set.sets["confirmations"].arn,
+          aws_sesv2_configuration_set.sets["editions"].arn,
+          aws_sesv2_contact_list.readers.arn,
         ]
         Condition = {
           StringEquals = { "ses:FromAddress" = local.from_email }

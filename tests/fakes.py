@@ -15,6 +15,7 @@ SETTINGS = Settings(
     contact_list="readers",
     topic="newsletter",
     confirmation_configuration_set="newsletter-confirmations",
+    configuration_set="newsletter",
     from_address="Adan Álvarez <adan@example.com>",
     site_url="https://adan.cloud",
     origin_secrets=["s3cret", "n3w-s3cret"],
@@ -109,8 +110,10 @@ class FakeStore:
 
 
 class FakeMailer:
-    def __init__(self, reject=False, fail_contact=False):
+    def __init__(self, reject=False, fail_contact=False, fail_welcome=False):
         self.sent = []
+        self.welcomed = []
+        self.fail_welcome = fail_welcome
         self.contacts = {}
         self.removed = []
         self.reject = reject
@@ -120,6 +123,11 @@ class FakeMailer:
         if self.reject:
             raise Rejected("BadRequestException")
         self.sent.append((email, link))
+
+    def send_welcome(self, email):
+        if self.fail_welcome:
+            raise RuntimeError("SES is down")
+        self.welcomed.append(email)
 
     def subscribe_contact(self, email, attributes):
         if self.fail_contact:

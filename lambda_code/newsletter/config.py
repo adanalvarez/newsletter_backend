@@ -12,6 +12,8 @@ class Settings:
     topic: str = "newsletter"
     # Confirmation emails have their own configuration set, so they can be paused without stopping editions.
     confirmation_configuration_set: str = ""
+    # The editions' configuration set. The welcome email goes through it too, so it's counted like an edition.
+    configuration_set: str = ""
     from_address: str = ""
     reply_to: str = ""
     site_url: str = "https://adan.cloud"
@@ -52,6 +54,7 @@ def load():
         contact_list=env.get("CONTACT_LIST", ""),
         topic=env.get("TOPIC", "newsletter"),
         confirmation_configuration_set=env.get("CONFIRMATION_CONFIGURATION_SET", ""),
+        configuration_set=env.get("CONFIGURATION_SET", ""),
         from_address=env.get("FROM_ADDRESS", ""),
         reply_to=env.get("REPLY_TO", ""),
         site_url=env.get("SITE_URL", "https://adan.cloud").rstrip("/"),

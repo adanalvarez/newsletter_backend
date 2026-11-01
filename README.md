@@ -12,7 +12,8 @@ adan.cloud/newsletter (form) ──POST /api/subscribe──► Cloudflare ─�
                                                                                                   └─ SES: confirmation email (link to /newsletter/confirm#t=…)
 adan.cloud/newsletter/confirm (button) ──POST /api/confirm──► … ──► signup Lambda
                                                                     ├─ SES contact list: subscribed to the "newsletter" topic
-                                                                    └─ DynamoDB: confirmed, with the consent history
+                                                                    ├─ DynamoDB: confirmed, with the consent history
+                                                                    └─ SES: welcome email (through the contact list)
 SES (bounces, complaints, unsubscribes) ──► EventBridge ──► ses-events Lambda ──► DynamoDB + contact list
                                                      (failures ──► dead-letter queue + alarm)
 ```
@@ -32,7 +33,7 @@ SES (bounces, complaints, unsubscribes) ──► EventBridge ──► ses-even
   - **Separate configuration set:** confirmation emails use their own, so they can be paused without stopping editions.
 - **Same answer, same time.** New, pending or already subscribed: the form always lands on "check your inbox", and every answer is padded to about the same time. So nobody can use the form to find out who's subscribed.
 - **Least privilege:**
-  - the sign-up function can only send email **from the newsletter address** (`ses:FromAddress` condition), through the confirmations configuration set;
+  - the sign-up function can only send email **from the newsletter address** (`ses:FromAddress` condition), through the newsletter's two configuration sets;
   - it can't read the whole table (no Scan or Query);
   - each function has its own role.
 - **Consent history** (GDPR Art. 7(1)): every confirmation and withdrawal is stored in the subscriber's record, with the date, the privacy-notice version the page showed, and the page the sign-up came from.
@@ -61,7 +62,7 @@ Writes that depend on the current state are conditional. Two requests at once ca
 ## Set it up
 
 ### 1. Before anything (in the consoles)
-- [x] SES production access requested (eu-west-1). Until it's granted, SES only sends to verified addresses. Once adan.cloud is verified, `adan@adan.cloud` counts, so you can test the whole flow on yourself.
+- [x] SES production access (eu-west-1), granted.
 - [x] DMARC on adan.cloud (Cloudflare DMARC Management, `p=none`).
 - [x] State bucket: `adan-terraform`, key `newsletter/terraform.tfstate` (`infra/backend.hcl`).
 
@@ -110,7 +111,7 @@ Add every record as **DNS only** (grey cloud): 3 DKIM CNAMEs, plus an MX and a T
   1. sign up;
   2. the email arrives;
   3. the button confirms;
-  4. the contact appears in the SES contact list;
+  4. the contact appears in the SES contact list, and the welcome email arrives;
   5. unsubscribe from a test edition later.
 
 ## Sending an edition
@@ -150,7 +151,18 @@ To see whether people read an edition, look at:
 - **new sign-ups by page** (`stats`);
 - **LinkedIn's numbers** for the LinkedIn edition.
 
-**Before production access,** SES only delivers to verified addresses. `test` to `adan@adan.cloud` works as soon as adan.cloud is verified.
+## The welcome email
+
+Everyone who confirms gets one welcome email, sent by the sign-up function right after they're subscribed.
+- **The text** is in `lambda_code/newsletter/messages.py` (`WELCOME`), in Adan's words. The intro follows Daniel Priestley's "Name, Same, Fame, Pain, Aim, Game". To change it, edit the text, preview it, then `terraform apply` to deploy the function.
+- **It goes through the contact list,** like an edition: it has a real unsubscribe link and one-click unsubscribe.
+- **Its numbers:** it's tagged `edition=welcome`, so `stats welcome` shows how many were sent, delivered, bounced or marked as spam, and who unsubscribed from it. That's why `welcome` can't be an edition's slug.
+- **If it fails,** the reader stays subscribed. The log records `WELCOME_FAILED` with the SES error code (never the address), and an alarm emails you.
+
+```bash
+.venv/bin/python tools/cli.py welcome          # preview it in your browser
+.venv/bin/python tools/cli.py welcome --test   # send it to adan@adan.cloud
+```
 
 ## Polls and "Was this edition useful?"
 

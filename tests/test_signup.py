@@ -219,6 +219,24 @@ class SignupTest(unittest.TestCase):
         # A second use of the same link doesn't work.
         self.assertEqual(self.location(self.call("/api/confirm", fields={"t": token})), f"{SITE}/newsletter/link-expired")
 
+    def test_confirming_sends_one_welcome_email(self):
+        self.subscribe()
+        token = self.sent_token()
+        self.call("/api/confirm", fields={"t": token})
+        self.call("/api/confirm", fields={"t": token})
+        self.assertEqual(self.mailer.welcomed, ["reader@example.com"])
+
+    def test_if_the_welcome_fails_the_reader_is_still_subscribed(self):
+        self.subscribe()
+        token = self.sent_token()
+        self.mailer.fail_welcome = True
+        with self.assertLogs(level="ERROR") as logs:
+            response = self.call("/api/confirm", fields={"t": token})
+        self.assertEqual(self.location(response), f"{SITE}/newsletter/confirmed")
+        self.assertEqual(self.store.subscribers["reader@example.com"]["status"], "confirmed")
+        self.assertIn("WELCOME_FAILED", logs.output[0])
+        self.assertNotIn("example.com", logs.output[0].lower())
+
     def test_confirming_a_variant_sign_up_subscribes_the_address_as_typed(self):
         self.subscribe(email="reader+news@example.com")
         self.call("/api/confirm", fields={"t": self.sent_token()})

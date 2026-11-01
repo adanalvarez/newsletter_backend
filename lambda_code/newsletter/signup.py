@@ -1,7 +1,7 @@
 """Sign-up endpoints, reached through Cloudflare, CloudFront (adan.cloud/api/*) and API Gateway.
 
 POST /api/subscribe  the form on adan.cloud: stores a pending sign-up and emails a confirmation link
-POST /api/confirm    the button on adan.cloud/newsletter/confirm: confirms the sign-up
+POST /api/confirm    the button on adan.cloud/newsletter/confirm: confirms the sign-up and sends the welcome email
 GET  /api/confirm    sends old or scanned links to that page, so a link scanner can never confirm anyone
 
 Every answer is a redirect back to adan.cloud, the same whether the address is new, pending or already
@@ -164,7 +164,15 @@ def confirm(fields, deps):
         # Put the link back so the reader can try again, then let the error raise the alarm.
         store.restore_token(hashed, pending)
         raise
-    logger.info("confirm: %s confirmed", email_ref(key, settings.log_hash_key))
+    ref = email_ref(key, settings.log_hash_key)
+    logger.info("confirm: %s confirmed", ref)
+    try:
+        deps.mailer.send_welcome(email)
+    except Exception as error:
+        # The reader is subscribed either way. Only the error code is logged: SES messages can include the
+        # address. WELCOME_FAILED raises an alarm (infra/alarms.tf).
+        code = str(error) if isinstance(error, Rejected) else getattr(error, "response", {}).get("Error", {}).get("Code", type(error).__name__)
+        logger.error("WELCOME_FAILED for %s: %s", ref, code)
     return redirect(settings, CONFIRMED)
 
 

@@ -1,4 +1,4 @@
-"""Amazon SES: the confirmation email and the contact list (which also handles unsubscribe)."""
+"""Amazon SES: the confirmation and welcome emails, and the contact list (which also handles unsubscribe)."""
 
 import json
 from email.utils import formataddr, parseaddr
@@ -22,7 +22,20 @@ class Mailer:
         self.sender = encode_sender(settings.from_address)
 
     def send_confirmation(self, email, link):
-        message = messages.confirmation(link, self.settings.site_url)
+        self._send(email, messages.confirmation(link, self.settings.site_url), ConfigurationSetName=self.settings.confirmation_configuration_set)
+
+    def send_welcome(self, email):
+        """Once someone confirms. It goes through the contact list like an edition: SES adds the one-click
+        unsubscribe headers and fills in the unsubscribe link, and the tag counts it under "welcome"."""
+        self._send(
+            email,
+            messages.welcome(self.settings.site_url),
+            ConfigurationSetName=self.settings.configuration_set,
+            ListManagementOptions={"ContactListName": self.settings.contact_list, "TopicName": self.settings.topic},
+            EmailTags=[{"Name": "edition", "Value": messages.WELCOME_TAG}],
+        )
+
+    def _send(self, email, message, **options):
         request = {
             "FromEmailAddress": self.sender,
             "Destination": {"ToAddresses": [email]},
@@ -35,7 +48,7 @@ class Mailer:
                     },
                 }
             },
-            "ConfigurationSetName": self.settings.confirmation_configuration_set,
+            **options,
         }
         if self.settings.reply_to:
             request["ReplyToAddresses"] = [self.settings.reply_to]

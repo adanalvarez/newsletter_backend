@@ -87,6 +87,34 @@ resource "aws_cloudwatch_metric_alarm" "daily_ceiling" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
 }
 
+# Someone confirmed but their welcome email couldn't be sent. They're subscribed either way; the log line says
+# which SES error it was.
+resource "aws_cloudwatch_log_metric_filter" "welcome_failed" {
+  name           = "${var.project}-welcome-failed"
+  log_group_name = aws_cloudwatch_log_group.signup.name
+  pattern        = "WELCOME_FAILED"
+
+  metric_transformation {
+    name      = "WelcomeFailed"
+    namespace = "Newsletter"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "welcome_failed" {
+  alarm_name          = "${var.project}-welcome-failed"
+  alarm_description   = "A new reader confirmed but didn't get the welcome email. See the signup function's log for the SES error."
+  namespace           = "Newsletter"
+  metric_name         = "WelcomeFailed"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+}
+
 resource "aws_cloudwatch_metric_alarm" "ses_events_dlq" {
   alarm_name          = "${var.project}-ses-events-dlq"
   alarm_description   = "An SES event (bounce, complaint or unsubscribe) couldn't be processed and is waiting in the dead-letter queue."

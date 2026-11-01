@@ -4,6 +4,7 @@
     python tools/cli.py test <slug | path/to/edition.md>      # sends it to you only (default adan@adan.cloud)
     python tools/cli.py send <slug>                           # sends the published edition to every reader
     python tools/cli.py stats [<slug>]                        # one edition's numbers, or the subscriber totals
+    python tools/cli.py welcome [--test]                      # the welcome email new readers get: preview or test
 
 `send` only takes a slug: it reads the published edition from adan.cloud, so the email is exactly what's live.
 It asks you to type the slug before sending, never emails anyone twice (re-running it is safe), and skips
@@ -30,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import edition as editions  # noqa: E402
 import render  # noqa: E402
+from newsletter import messages  # noqa: E402
 from newsletter.validation import canonical, clean_comment  # noqa: E402
 
 REGION = os.environ.get("AWS_REGION", "eu-west-1")
@@ -90,6 +92,33 @@ def test(args):
     print(f"Test of '{edition.subject}' sent to {args.to}.")
 
 
+def welcome(args):
+    """The welcome email new readers get when they confirm (lambda_code/newsletter/messages.py)."""
+    message = messages.welcome(editions.SITE, unsubscribe=render.PREVIEW_UNSUBSCRIBE)
+    if args.test:
+        ses = boto3.client("sesv2", region_name=REGION)
+        ses.send_email(
+            FromEmailAddress=sender(),
+            Destination={"ToAddresses": [args.to]},
+            Content={
+                "Simple": {
+                    "Subject": {"Data": "[TEST] " + message["subject"], "Charset": "UTF-8"},
+                    "Body": {"Html": {"Data": message["html"], "Charset": "UTF-8"}, "Text": {"Data": message["text"], "Charset": "UTF-8"}},
+                }
+            },
+        )
+        print(f"Test of the welcome email sent to {args.to}.")
+        return
+    out = ROOT / "build" / "preview"
+    out.mkdir(parents=True, exist_ok=True)
+    page = out / "welcome.html"
+    page.write_text(message["html"], encoding="utf-8")
+    page.with_suffix(".txt").write_text(message["text"], encoding="utf-8")
+    print(f"Subject: {message['subject']}\nPreview: {page}\nText:    {page.with_suffix('.txt')}")
+    if not args.no_open:
+        webbrowser.open(page.as_uri())
+
+
 # ---- send ----
 
 
@@ -114,6 +143,8 @@ def readers(ses):
 def send(args, ses=None, table=None, confirm=input, sleep=time.sleep, out=print):
     ses = ses or boto3.client("sesv2", region_name=REGION)
     table = table or boto3.resource("dynamodb", region_name=REGION).Table(TABLE)
+    if args.slug == messages.WELCOME_TAG:
+        sys.exit(f"'{messages.WELCOME_TAG}' is reserved for the welcome email's numbers. Rename the edition.")
     edition = editions.fetch(args.slug)
     if edition.draft:
         sys.exit("That edition is still a draft on the site. Publish it first.")
@@ -243,7 +274,7 @@ def answers(table, slug):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="No Hype, No Fear: preview, test, send and stats.")
+    parser = argparse.ArgumentParser(description="No Hype, No Fear: preview, test, send, stats and the welcome email.")
     commands = parser.add_subparsers(dest="command", required=True)
     p = commands.add_parser("preview", help="write the email to build/preview/ and open it")
     p.add_argument("source", help="edition slug (live site) or path to a local .md file")
@@ -253,6 +284,11 @@ def main():
     p.add_argument("source", help="edition slug (live site) or path to a local .md file")
     p.add_argument("--to", default=TEST_TO)
     p.set_defaults(run=test)
+    p = commands.add_parser("welcome", help="preview the welcome email, or send yourself a test with --test")
+    p.add_argument("--test", action="store_true", help="send it to yourself instead of opening a preview")
+    p.add_argument("--to", default=TEST_TO)
+    p.add_argument("--no-open", action="store_true")
+    p.set_defaults(run=welcome)
     p = commands.add_parser("send", help="send the published edition to every reader")
     p.add_argument("slug")
     p.add_argument("--rate", type=float, default=5, help="emails per second (default 5)")
