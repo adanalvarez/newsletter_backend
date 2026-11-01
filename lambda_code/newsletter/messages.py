@@ -43,7 +43,7 @@ WELCOME = [
     "Like many, I'm working on implementing AI in security. I'm helping different companies and teams use it "
     "securely. And at the same time, I'm fighting attackers who already use it.",
     # Aim, Game
-    "My current aim is to help companies get AI-ready. My biggest goal is to help them build trust and reduce risk, "
+    "My current aim is making security AI-ready. My biggest goal is to help companies build trust and reduce risk, "
     "so they can scale securely.",
     # What arrives
     "This newsletter is one of the ways I believe I can help. About once a month, I share what I learn, what I test and "
@@ -51,9 +51,8 @@ WELCOME = [
 ]
 # One easy question: replies also teach Gmail and Outlook that the newsletter is wanted.
 WELCOME_ASK = (
-    "One thing I love is learning what others are doing in security. What are you doing with AI right now, or what "
-    "would you like me to test next? Reply to this email or send me a DM on LinkedIn. One line is enough, and I read "
-    "every reply."
+    "One thing I love is learning what others are doing in security. What's something exciting or interesting you're "
+    "working on right now? Reply to this email or send me a DM on LinkedIn. One line is enough, and I read every reply."
 )
 # The first email from a new sender often lands in Promotions.
 WELCOME_PS = "P.S. If this landed in Promotions or spam, please move it to your inbox so the next edition reaches you."
