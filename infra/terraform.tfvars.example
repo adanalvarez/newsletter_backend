@@ -1,0 +1,5 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+from_address    = "Adan Álvarez <adan@adan.cloud>" # an address on adan.cloud that Cloudflare routes to your inbox
+reply_to        = ""                               # empty: replies go to the sender address
+consent_versions = ["2026-11-01"] # privacy-notice versions, current first (set to the notice's date once it's final)
+alert_email     = "you@example.com"                # gets the alarms; confirm the SNS email after the first apply

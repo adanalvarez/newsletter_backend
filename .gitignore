@@ -1,0 +1,12 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+backend.hcl
+build/
+
+# Python
+.venv/
+__pycache__/
+*.pyc

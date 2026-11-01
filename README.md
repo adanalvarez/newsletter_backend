@@ -1,0 +1,186 @@
+# newsletter
+
+The sign-up backend for **No Hype, No Fear**, Adan Álvarez's newsletter on adan.cloud. Readers only ever see adan.cloud: the form posts to `adan.cloud/api/subscribe`, the confirmation email comes from adan.cloud, and its link goes to `adan.cloud/newsletter/confirm`.
+
+This repo holds the machinery. The pages, the editions and the form live in the site repo (`adan.cloud`). Sending the monthly edition comes next; this first part collects and confirms readers.
+
+## How it works
+
+```
+adan.cloud/newsletter (form) ──POST /api/subscribe──► Cloudflare ──► CloudFront ──► API Gateway ──► signup Lambda
+                                                                                                  ├─ DynamoDB: pending sign-up
+                                                                                                  └─ SES: confirmation email (link to /newsletter/confirm#t=…)
+adan.cloud/newsletter/confirm (button) ──POST /api/confirm──► … ──► signup Lambda
+                                                                    ├─ SES contact list: subscribed to the "newsletter" topic
+                                                                    └─ DynamoDB: confirmed, with the consent history
+SES (bounces, complaints, unsubscribes) ──► EventBridge ──► ses-events Lambda ──► DynamoDB + contact list
+                                                     (failures ──► dead-letter queue + alarm)
+```
+
+### Security and privacy design
+- **Double opt-in that link scanners can't trigger.** Nobody is added until they press the button on the confirmation page. The email link only opens that page, and its code is in the `#` fragment, so it never reaches a server, a CDN log or a Referer header. The page sends no referrer, and it removes the code from the address bar.
+- **Only through the site, only from the site.**
+  - CloudFront adds `X-Origin-Verify` and Cloudflare adds `X-Edge-Verify`. The function refuses requests missing either, so nobody can skip Cloudflare's rate limits by calling API Gateway or CloudFront directly.
+  - POSTs must come from `https://adan.cloud` (the `Origin` header), so other sites can't submit the form for their visitors.
+  - Both secrets accept a previous value during a rotation.
+- **Limits on abuse of the form:**
+  - **Honeypot:** a hidden field bots fill in.
+  - **One confirmation email per inbox per day.** "Inbox" is canonical, so `+tags` and Gmail dots count as the same one.
+  - **A daily ceiling** on confirmation emails (default 100). An alarm fires when it's reached.
+  - **Cloudflare rate limiting** per visitor.
+  - **API Gateway throttling** as an overall safety ceiling.
+  - **Separate configuration set:** confirmation emails use their own, so they can be paused without stopping editions.
+- **Same answer, same time.** New, pending or already subscribed: the form always lands on "check your inbox", and every answer is padded to about the same time. So nobody can use the form to find out who's subscribed.
+- **Least privilege:**
+  - the sign-up function can only send email **from the newsletter address** (`ses:FromAddress` condition), through the confirmations configuration set;
+  - it can't read the whole table (no Scan or Query);
+  - each function has its own role.
+- **Consent history** (GDPR Art. 7(1)): every confirmation and withdrawal is stored in the subscriber's record, with the date, the privacy-notice version the page showed, and the page the sign-up came from.
+- **Retention:**
+  - unconfirmed sign-ups expire with their link (48 hours);
+  - after an unsubscribe, bounce or complaint, the record is kept for `retention_days` (3 years by default, pending the legal review), then deleted automatically;
+  - addresses that never confirmed are kept only `unconfirmed_retention_days` (30).
+- **Erasure:** `scripts/erase_reader.py` (below).
+- **Logs** never contain an email address, only a 12-character HMAC with a secret key. They're kept 90 days.
+- **Unsubscribe** is handled by SES list management (hosted page plus one-click `List-Unsubscribe` headers), and recorded by the events function.
+
+### DynamoDB items
+| Key | What |
+|---|---|
+| `SUB#<canonical email>` | address as typed, status (pending, confirmed, unsubscribed, bounced, complained), role, source page, consent version, dates, `history` |
+| `TOKEN#<sha256>` | a pending confirmation link. Only the hash is stored; it's used once and expires after 48 hours |
+| `COUNTER#<date>` | confirmation emails sent that day |
+| `EDITION#<slug>` | an edition's numbers: sent, delivered, bounced, complained, unsubscribed (counts only) |
+| `SENT#<slug>#<reader>` | who an edition went to, so a re-run never sends twice (expires after 180 days) |
+
+Writes that depend on the current state are conditional. Two requests at once can't both send an email, confirm twice, or overwrite a confirmed subscriber.
+
+## Set it up
+
+### 1. Before anything (in the consoles)
+- [x] SES production access requested (eu-west-1). Until it's granted, SES only sends to verified addresses. Once adan.cloud is verified, `adan@adan.cloud` counts, so you can test the whole flow on yourself.
+- [x] DMARC on adan.cloud (Cloudflare DMARC Management, `p=none`).
+- [x] State bucket: `adan-terraform`, key `newsletter/terraform.tfstate` (`infra/backend.hcl`).
+
+### 2. Deploy
+```bash
+cd infra
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+```
+Then confirm the SNS subscription email AWS sends to `alert_email`.
+
+### 3. DNS in Cloudflare
+```bash
+terraform output dns_records
+```
+Add every record as **DNS only** (grey cloud): 3 DKIM CNAMEs, plus an MX and a TXT on `bounce.adan.cloud`. Don't change the root SPF record: Cloudflare Email Routing uses it, and SES aligns SPF through `bounce.adan.cloud`.
+
+### 4. CloudFront (the site's distribution, by hand)
+1. **Origins → Create origin**
+   - Origin domain: `terraform output -raw cloudfront_origin_domain`
+   - Protocol: HTTPS only
+   - Custom header: `X-Origin-Verify` = `terraform output -raw origin_secret`
+2. **Behaviors → Create behavior**
+   - Path pattern: `/api/*`, origin: the one above
+   - Viewer protocol: Redirect HTTP to HTTPS
+   - Allowed methods: GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE
+   - Cache policy: **CachingDisabled**
+   - Origin request policy: **AllViewerExceptHostHeader**
+   - Response headers policy: the same one as the default behavior
+   - **No function association.** The site's viewer-request function would rewrite `/api/subscribe` to `/api/subscribe/index.html`.
+
+### 5. Cloudflare (three rules, all on the free plan)
+1. **Transform Rules → Modify request header:** for requests whose URI path starts with `/api/`, set the static header `X-Edge-Verify` to `terraform output -raw edge_secret`. Until this exists, `/api` answers 403. That's on purpose: requests have to come through Cloudflare.
+2. **Security → WAF → Rate limiting rules** (free plan: a 10-second period and a 10-second block): when the URI path starts with `/api/`, allow at most **3 requests per 10 seconds per IP**, then block.
+3. **Caching → Cache Rules:** bypass the cache for URI paths starting with `/newsletter/`. CloudFront sends agents the Markdown version of the same URL, and Cloudflare ignores `Vary`, so it must never cache these pages.
+
+### 6. Switch the site on (site repo)
+- In `src/data/newsletter.js`, set:
+  - `signupEndpoint: '/api/subscribe'`;
+  - `privacyUrl: '/privacy'`;
+  - `consentVersion`, which must be in `consent_versions`.
+- Add the privacy page.
+- CSP: change `form-action 'none'` to `form-action 'self'`.
+- Deploy, then check the whole flow with `adan@adan.cloud`:
+  1. sign up;
+  2. the email arrives;
+  3. the button confirms;
+  4. the contact appears in the SES contact list;
+  5. unsubscribe from a test edition later.
+
+## Sending an edition
+
+One-time setup for the send tool:
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt
+```
+
+The flow, after the edition is written and published on adan.cloud (see the site repo's README, "Newsletter editions"):
+
+```bash
+.venv/bin/python tools/cli.py preview <slug>    # the email, opened in your browser (also works on a local .md draft)
+.venv/bin/python tools/cli.py test <slug>       # sends it to adan@adan.cloud only, subject starts with [TEST]
+.venv/bin/python tools/cli.py send <slug>       # shows the count, asks you to type the slug, then sends to every reader
+.venv/bin/python tools/cli.py stats <slug>      # sent, delivered, bounced, complained, unsubscribed
+.venv/bin/python tools/cli.py stats             # subscribers by status, and confirmed readers by role and by page
+```
+
+**How the send works:**
+- It reads the published `adan.cloud/newsletter/<slug>.md`, so the email is exactly what's live. It refuses drafts.
+- **One email per reader,** through the SES contact list. SES adds the one-click unsubscribe headers and fills in the unsubscribe link for each reader.
+- **No double sends.** Each reader is claimed in DynamoDB (`SENT#<slug>#<reader>`) before their email goes out. Re-running the command (after a failure, or by accident) never emails anyone twice. Failed sends are released, so the next run retries them.
+- **Throttled** to 5 emails a second (`--rate`).
+- **Tagged** `edition=<slug>`, so SES events count towards that edition's numbers.
+
+**What's tracked, and what isn't.** For each edition:
+- **sent and delivered:** did it go out, and did the inbox servers accept it?
+- **bounced and complained:** the health of the list and the domain;
+- **unsubscribed.**
+
+They're counts only, collected by the events function. **Opens and clicks aren't tracked:** the newsletter promises no tracking pixels, and open rates are unreliable anyway, since Apple Mail fakes most opens.
+
+To see whether people read an edition, look at:
+- **replies** to `adan@adan.cloud`;
+- **visits to the edition's page:** CloudFront → Reports & analytics → Popular objects;
+- **new sign-ups by page** (`stats`);
+- **LinkedIn's numbers** for the LinkedIn edition.
+
+**Before production access,** SES only delivers to verified addresses. `test` to `adan@adan.cloud` works as soon as adan.cloud is verified.
+
+## Running it
+
+**A spike of sign-ups (announcement day).** Raise `daily_confirmation_limit` for the day and `terraform apply`. The "daily ceiling reached" alarm tells you when real readers are being turned away.
+
+**A flood of fake sign-ups:**
+1. Pause confirmation emails without touching editions:
+   ```bash
+   aws sesv2 put-configuration-set-sending-options --configuration-set-name newsletter-confirmations --no-sending-enabled
+   ```
+2. Look at the Cloudflare firewall events, and tighten the rate limit or add a Cloudflare challenge on `/newsletter`.
+3. Re-enable confirmations with `--sending-enabled`.
+
+**The dead-letter queue alarm.** An SES event (bounce, complaint, unsubscribe) failed to process. Fix the cause, then replay each message in `newsletter-ses-events-dlq` to the `newsletter-ses-events` function.
+
+**Rotating a secret:**
+1. Put the current value in `previous_origin_secrets`, `taint` the `random_password`, and apply.
+2. Update the CloudFront header or the Cloudflare rule.
+3. Empty `previous_origin_secrets`, and apply again.
+
+**An erasure request (GDPR Art. 17):**
+```bash
+python3 scripts/erase_reader.py reader@example.com        # dry run
+python3 scripts/erase_reader.py reader@example.com --yes
+```
+It deletes the record and its consent history, the SES contact, and the suppression-list entry. Tell the reader that table backups age out within 35 days, and that logs never held their address.
+
+## Tests
+```bash
+python3 -m unittest discover -s tests          # the Lambda handlers: no packages needed
+.venv/bin/python -m unittest discover -s tests  # also the send tool (needs tools/requirements.txt)
+```
+The tests use in-memory fakes for DynamoDB and SES, so no AWS account is needed.
+
+## Costs
+Pennies at this size: SES at $0.10–0.16 per 1,000 emails, DynamoDB on-demand, Lambda, API Gateway, SQS and alarms within or near the free tier.
