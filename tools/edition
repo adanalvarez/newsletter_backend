@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # No Hype, No Fear: one command for the whole edition flow, from the first draft to the numbers.
 #
-#   edition new <slug> [research|tested|opinion|how-to]   start a draft (and open it in VS Code)
+#   edition new <slug> [parts...]                        start a draft; parts: any of research tested opinion how-to
 #   edition list                                          every edition: draft or published
 #   edition site [<slug>]                                 preview on the site, drafts included (local)
 #   edition email <slug>                                  preview the email in your browser
@@ -56,7 +56,7 @@ for path in sorted(Path(sys.argv[1]).glob("*.md")):
     except ValueError as error:
         rows.append((0, "", "broken", path.stem, str(error)))
 if not rows:
-    print("No editions yet. Start one with: edition new <slug> [research|tested|opinion|how-to]")
+    print("No editions yet. Start one with: edition new <slug> [research tested opinion how-to]")
 for number, date, status, slug, subject in sorted(rows, reverse=True):
     print(f"{number:>3}  {date:<10}  {status:<9}  {slug:<28}  {subject}")
 EOF

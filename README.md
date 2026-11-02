@@ -131,7 +131,7 @@ Sections 4 and 5 are the same steps by hand.
 One command, `edition` (`tools/edition`, linked into `~/.local/bin`), runs the whole flow. It finds the site repo through `NEWSLETTER_SITE`.
 
 ```bash
-edition new the-sixty-seconds tested    # 1. start a draft (opens in VS Code)
+edition new the-sixty-seconds tested how-to   # 1. start a draft, with the parts it mixes (opens in VS Code)
 edition site the-sixty-seconds          # 2. see it on the site, locally (drafts show only here)
 edition email the-sixty-seconds         # 3. see the email in your browser
 edition test the-sixty-seconds          # 4. get it in your inbox: check it on your phone, in Gmail, in dark mode
