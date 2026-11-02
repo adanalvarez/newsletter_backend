@@ -47,7 +47,19 @@ variable "consent_versions" {
 variable "roles" {
   description = "Allowed values for the optional role field. Must match src/data/newsletter.js on the site."
   type        = list(string)
-  default     = ["Detection engineering", "SOC / IR", "Cloud security", "Security engineering or architecture", "Student", "Other"]
+  default = [
+    "CISO / head of security",
+    "CTO",
+    "Founder",
+    "Security engineering or architecture",
+    "Detection engineering",
+    "SOC / IR",
+    "Cloud security",
+    "Software engineering",
+    "IT",
+    "Student",
+    "Other",
+  ]
 }
 
 variable "daily_confirmation_limit" {
