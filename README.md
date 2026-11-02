@@ -114,6 +114,24 @@ Add every record as **DNS only** (grey cloud): 3 DKIM CNAMEs, plus an MX and a T
   4. the contact appears in the SES contact list, and the welcome email arrives;
   5. unsubscribe from a test edition later.
 
+## Writing and sending an edition: the easy way
+
+One command, `edition` (`tools/edition`, linked into `~/.local/bin`), runs the whole flow. It finds the site repo through `NEWSLETTER_SITE`.
+
+```bash
+edition new the-sixty-seconds tested    # 1. start a draft (opens in VS Code)
+edition site the-sixty-seconds          # 2. see it on the site, locally (drafts show only here)
+edition email the-sixty-seconds         # 3. see the email in your browser
+edition test the-sixty-seconds          # 4. get it in your inbox: check it on your phone, in Gmail, in dark mode
+                                        # 5. publish: remove `draft: true`, commit, push, deploy the site
+edition test the-sixty-seconds --live   # 6. last check: the published version, with working images and poll buttons
+edition send the-sixty-seconds          # 7. send it to everyone (you type the slug to confirm)
+edition stats the-sixty-seconds         # 8. a few days later: the numbers, poll answers and comments
+edition list                            # every edition, draft or published
+```
+
+While it's a draft, the email's images and poll buttons point to pages that aren't live yet. That's why step 6 exists.
+
 ## Sending an edition
 
 One-time setup for the send tool:

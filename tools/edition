@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# No Hype, No Fear: one command for the whole edition flow, from the first draft to the numbers.
+#
+#   edition new <slug> [research|tested|opinion|how-to]   start a draft (and open it in VS Code)
+#   edition list                                          every edition: draft or published
+#   edition site [<slug>]                                 preview on the site, drafts included (local)
+#   edition email <slug>                                  preview the email in your browser
+#   edition test <slug> [--live] [--to <address>]        send yourself the email (--live: the published one)
+#   edition send <slug>                                   email the published edition to every reader
+#   edition stats [<slug>]                                an edition's numbers, or the subscriber totals
+#   edition welcome [--test]                              the welcome email new readers get
+#
+# Publishing on the site happens in between: remove `draft: true`, commit, push, then deploy the site
+# (GitHub: Actions → deploy-web → Run workflow, or publish a release).
+#
+# Settings: NEWSLETTER_SITE is the site repo (default below). The send tool's own settings are in tools/cli.py.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SITE="${NEWSLETTER_SITE:-/home/fleky/repos/adanalvarez_brand/adan.cloud-redesign}"
+EDITIONS="$SITE/src/content/newsletter"
+PY="$HERE/.venv/bin/python"
+CLI=("$PY" "$HERE/tools/cli.py")
+
+usage() { sed -n '3,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+draft() {
+  [[ -n ${1:-} ]] || { echo "Which edition? Give its slug, e.g. 'edition email the-sixty-seconds'. See: edition list" >&2; exit 1; }
+  local file="$EDITIONS/$1.md"
+  [[ -f $file ]] || { echo "There's no $1.md in $EDITIONS. See: edition list" >&2; exit 1; }
+  echo "$file"
+}
+
+[[ -x $PY ]] || { echo "Set up the send tool first: cd $HERE && python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt" >&2; exit 1; }
+
+command="${1:-help}"
+shift || true
+case "$command" in
+  new)
+    npm --prefix "$SITE" run --silent new:edition -- "$@"
+    file="$EDITIONS/${1}.md"
+    if command -v code >/dev/null; then code "$file"; fi
+    echo "Next: write it, then 'edition site $1' and 'edition email $1'."
+    ;;
+  list)
+    "$PY" - "$EDITIONS" "$HERE/tools" <<'EOF'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[2])
+import edition
+rows = []
+for path in sorted(Path(sys.argv[1]).glob("*.md")):
+    try:
+        e = edition.parse(path.read_text(encoding="utf-8"), path.stem)
+        rows.append((e.number, e.date, "draft" if e.draft else "published", e.slug, e.subject))
+    except ValueError as error:
+        rows.append((0, "", "broken", path.stem, str(error)))
+if not rows:
+    print("No editions yet. Start one with: edition new <slug> [research|tested|opinion|how-to]")
+for number, date, status, slug, subject in sorted(rows, reverse=True):
+    print(f"{number:>3}  {date:<10}  {status:<9}  {slug:<28}  {subject}")
+EOF
+    ;;
+  site)
+    echo "Opening the site with drafts. Edition: http://localhost:4321/newsletter/${1:-}  (Ctrl+C to stop)"
+    npm --prefix "$SITE" run --silent dev
+    ;;
+  email)
+    file="$(draft "${1:-}")"; shift
+    "${CLI[@]}" preview "$file" "$@"
+    ;;
+  test)
+    slug="${1:-}"; shift || true
+    if [[ ${1:-} == --live ]]; then
+      shift
+      "${CLI[@]}" test "${slug:?Which edition?}" "$@"
+    else
+      "${CLI[@]}" test "$(draft "$slug")" "$@"
+    fi
+    ;;
+  send | stats | welcome)
+    "${CLI[@]}" "$command" "$@"
+    ;;
+  help | -h | --help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $command" >&2
+    usage 1
+    ;;
+esac
