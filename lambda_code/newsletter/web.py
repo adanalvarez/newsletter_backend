@@ -33,7 +33,9 @@ def refused(event, settings):
 
 def same_site(sent, site_url):
     origin = sent.get("origin")
-    if origin:
+    # A page with a strict referrer policy (or a privacy-minded browser) sends "Origin: null" on a form POST. Then
+    # Sec-Fetch-Site decides: browsers set it themselves, and a sandboxed frame or data: page elsewhere gets "cross-site".
+    if origin and origin != "null":
         return origin == site_url
     return sent.get("sec-fetch-site") == "same-origin"
 

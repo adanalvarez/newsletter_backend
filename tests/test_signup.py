@@ -268,6 +268,16 @@ class SignupTest(unittest.TestCase):
         headers = {**VALID_HEADERS, "Origin": "https://evil.example"}
         self.assertEqual(self.call("/api/confirm", fields={"t": self.sent_token()}, headers=headers)["statusCode"], 403)
 
+    def test_confirm_from_a_page_that_sends_origin_null_still_works(self):
+        # The confirm page's referrer policy can make the browser send "Origin: null"; Sec-Fetch-Site decides.
+        self.subscribe()
+        token = self.sent_token()
+        hidden = {"X-Origin-Verify": "s3cret", "X-Edge-Verify": "3dge", "Origin": "null"}
+        refused = self.call("/api/confirm", fields={"t": token}, headers={**hidden, "Sec-Fetch-Site": "cross-site"})
+        self.assertEqual(refused["statusCode"], 403)
+        response = self.call("/api/confirm", fields={"t": token}, headers={**hidden, "Sec-Fetch-Site": "same-origin"})
+        self.assertEqual(self.location(response), f"{SITE}/newsletter/confirmed")
+
     def test_get_on_the_confirm_link_never_confirms(self):
         # Link scanners follow GET links; only the button on the page (a POST) confirms.
         self.subscribe()
