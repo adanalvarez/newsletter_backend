@@ -22,7 +22,7 @@ FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-
 SUBJECT = "Confirm your subscription to No Hype, No Fear"
 
 CONFIRM_TEXT = [
-    "Someone, hopefully you, asked to get No Hype, No Fear: my newsletter on how AI is changing security, about once a month.",
+    "Someone, hopefully you, asked to get No Hype, No Fear, my newsletter on how AI is changing security, about once a month.",
 ]
 CONFIRM_AFTER = "If it wasn't you, ignore this email. You won't hear from me again."
 

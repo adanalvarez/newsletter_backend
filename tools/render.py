@@ -98,7 +98,7 @@ POLL = Template(
 <tr><td style="padding:18px 20px 14px;">
 <div class="nl-strong" style="margin:0 0 12px;font-size:17px;font-weight:700;color:{TEXT};">$question</div>
 $options
-<div class="nl-muted" style="margin:6px 0 0;font-size:13px;color:{MUTED};">Anonymous: one click opens a page where you confirm, and can add a comment.</div>
+<div class="nl-muted" style="margin:6px 0 0;font-size:13px;color:{MUTED};">Anonymous. One click opens a page where you confirm, and you can add a comment.</div>
 </td></tr>
 </table>"""
 )
@@ -287,7 +287,7 @@ def to_text(edition, newsletter="No Hype, No Fear", postal="Barcelona, Spain", u
         f"{USEFUL_QUESTION} "
         + " · ".join(f"{label}: {vote_url(edition, 'useful', i)}" for i, label in enumerate(USEFUL_OPTIONS))
         + "\n\n--\n"
-        "Reply to this email: I read every reply.\n"
+        "Reply to this email. I read every reply.\n"
         f"You're getting {newsletter} because you subscribed at adan.cloud. No tracking.\n"
         f"Unsubscribe: {unsubscribe}\n"
         f"Adan Álvarez · {postal}\n"
