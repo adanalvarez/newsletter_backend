@@ -81,6 +81,18 @@ terraform output dns_records
 ```
 Add every record as **DNS only** (grey cloud): 3 DKIM CNAMEs, plus an MX and a TXT on `bounce.adan.cloud`. Don't change the root SPF record: Cloudflare Email Routing uses it, and SES aligns SPF through `bounce.adan.cloud`.
 
+### 4–5. CloudFront and Cloudflare: the script
+`scripts/edge_setup.py` does sections 4 and 5 below, and the CSP change from section 6, with the values read straight from `terraform output`. It shows the changes first, never prints a secret, and re-running it changes only what differs. That also makes it the way to roll out new secrets.
+
+```bash
+export CLOUDFLARE_API_TOKEN=...                 # zone adan.cloud: Zone Read, Transform Rules Edit, Zone WAF Edit, Cache Rules Edit
+.venv/bin/python scripts/edge_setup.py          # dry run: what would change
+.venv/bin/python scripts/edge_setup.py --apply  # change it, wait for CloudFront, test /api
+.venv/bin/python scripts/edge_setup.py --check  # only the test
+```
+
+Sections 4 and 5 are the same steps by hand.
+
 ### 4. CloudFront (the site's distribution, by hand)
 1. **Origins → Create origin**
    - Origin domain: `terraform output -raw cloudfront_origin_domain`
