@@ -395,7 +395,12 @@ def check_api():
     elif status == 403:
         hint = "Cloudflare or CloudFront blocked the request before the backend"
     elif status == 404:
-        hint = "/api/* isn't routed to the backend yet (CloudFront may still be deploying: try --check in a few minutes)"
+        # The distribution's custom error pages turn the backend's 403 into the site's 404 page too.
+        hint = (
+            "either /api/* isn't routed to the backend yet (CloudFront may still be deploying: try --check in a few "
+            "minutes), or the backend refused it and CloudFront showed its 404 page: check the X-Edge-Verify and "
+            "X-Origin-Verify headers"
+        )
     else:
         hint = "unexpected answer"
     print(f"Not working yet: {status} {location} ({hint}).")

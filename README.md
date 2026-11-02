@@ -108,7 +108,7 @@ Sections 4 and 5 are the same steps by hand.
    - **No function association.** The site's viewer-request function would rewrite `/api/subscribe` to `/api/subscribe/index.html`.
 
 ### 5. Cloudflare (three rules, all on the free plan)
-1. **Transform Rules → Modify request header:** for requests whose URI path starts with `/api/`, set the static header `X-Edge-Verify` to `terraform output -raw edge_secret`. Until this exists, `/api` answers 403. That's on purpose: requests have to come through Cloudflare.
+1. **Transform Rules → Modify request header:** for requests whose URI path starts with `/api/`, set the static header `X-Edge-Verify` to `terraform output -raw edge_secret`. Until this exists, `/api` refuses every request. That's on purpose: requests have to come through Cloudflare. (Visitors see the site's 404 page: the distribution's custom error pages replace the backend's 403.)
 2. **Security → WAF → Rate limiting rules** (free plan: a 10-second period and a 10-second block): when the URI path starts with `/api/`, allow at most **3 requests per 10 seconds per IP**, then block.
 3. **Caching → Cache Rules:** bypass the cache for URI paths starting with `/newsletter/`. CloudFront sends agents the Markdown version of the same URL, and Cloudflare ignores `Vary`, so it must never cache these pages.
 
